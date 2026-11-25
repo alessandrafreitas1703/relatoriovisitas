@@ -1,0 +1,2115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA - Sistema de Gestão e Relatório de Atividades</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- html2pdf.js para exportação direta em PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Estilos de Impressão Otimizados (@media print) */
+        @media print {
+            body {
+                background-color: white !important;
+                color: black !important;
+                font-size: 11pt;
+            }
+            .no-print {
+                display: none !important;
+            }
+            #print-area {
+                display: block !important;
+                position: static !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+            }
+            .page-break-inside-avoid {
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
+            }
+        }
+
+        /* Animações suaves para Toasts */
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-enter {
+            animation: slideInRight 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col antialiased selection:bg-brand-100 selection:text-brand-900">
+
+    <!-- Container de Notificações (Toasts) -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none no-print"></div>
+
+    <!-- Modal Lightbox para Visualização de Foto em Tela Cheia -->
+    <div id="lightbox-modal" onclick="closeLightbox()" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-50 hidden flex-col items-center justify-center p-4 no-print">
+        <button type="button" onclick="closeLightbox()" class="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition">
+            <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+        <div onclick="event.stopPropagation()" class="max-w-4xl w-full flex flex-col items-center">
+            <img id="lightbox-img" src="" alt="Registro fotográfico ampliado" class="max-h-[80vh] w-auto max-w-full rounded-xl shadow-2xl border border-white/15 object-contain bg-slate-900">
+            <p id="lightbox-caption" class="text-white text-sm font-medium mt-3 text-center bg-black/60 px-4 py-2 rounded-xl empty:hidden"></p>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação Personalizado (Substitui confirm() nativo) -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4 no-print">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 transform transition-all border border-slate-100">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+                </div>
+                <div>
+                    <h3 id="confirm-title" class="text-lg font-bold text-slate-900">Confirmar Exclusão</h3>
+                    <p id="confirm-message" class="text-sm text-slate-500 mt-1">Tem certeza que deseja remover este registro? Esta ação não pode ser desfeita.</p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" id="confirm-cancel-btn" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition text-sm">
+                    Cancelar
+                </button>
+                <button type="button" id="confirm-ok-btn" class="px-4 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition text-sm shadow-sm">
+                    Sim, Excluir
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Pré-visualização de Impressão / Relatório -->
+    <div id="preview-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 hidden flex-col no-print">
+        <div class="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-file-pdf text-brand-600 text-xl"></i>
+                <h3 class="font-bold text-slate-800 text-base sm:text-lg">Pré-visualização do Relatório Oficial</h3>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="button" onclick="downloadPDF()" class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-medium text-sm flex items-center gap-2 shadow-sm transition">
+                    <i class="fa-solid fa-download"></i> Baixar PDF
+                </button>
+                <button type="button" onclick="window.print()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-medium text-sm flex items-center gap-2 shadow-sm transition">
+                    <i class="fa-solid fa-print"></i> Imprimir
+                </button>
+                <button type="button" onclick="closePreviewModal()" class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium text-sm transition">
+                    <i class="fa-solid fa-xmark"></i> Fechar
+                </button>
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center bg-slate-200/70">
+            <!-- Container onde o relatório formatado será injetado -->
+            <div id="modal-report-container" class="bg-white shadow-xl rounded-lg w-full max-w-4xl p-6 sm:p-10 text-slate-900"></div>
+        </div>
+    </div>
+
+    <!-- Cabeçalho Principal -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between py-4 gap-4">
+                <!-- Logo e Título -->
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 text-white flex items-center justify-center shadow-md shrink-0">
+                        <i class="fa-solid fa-clipboard-check text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-slate-900 tracking-tight leading-tight">Gestão de Atividades</h1>
+                        <p class="text-xs text-slate-500 font-medium">Relatórios Técnicos, Visitas & Evidências</p>
+                    </div>
+                </div>
+
+                <!-- Navegação por Abas -->
+                <nav class="flex bg-slate-100 p-1 rounded-xl self-start sm:self-auto w-full sm:w-auto">
+                    <button type="button" id="tab-btn-atividades" onclick="switchTab('atividades')" class="flex-1 sm:flex-initial px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 bg-white text-brand-700 shadow-sm">
+                        <i class="fa-solid fa-list-check"></i>
+                        <span>Lançamentos & Relatório</span>
+                    </button>
+                    <button type="button" id="tab-btn-colaboradores" onclick="switchTab('colaboradores')" class="flex-1 sm:flex-initial px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 text-slate-600 hover:text-slate-900">
+                        <i class="fa-solid fa-users-gear"></i>
+                        <span>Colaboradores</span>
+                        <span id="badge-colab-count" class="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-200 text-slate-700">0</span>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Conteúdo Principal -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 no-print">
+
+        <!-- ========================================== -->
+        <!-- ABA 1: LANÇAMENTOS & RELATÓRIO DE ATIVIDADES -->
+        <!-- ========================================== -->
+        <section id="view-atividades" class="space-y-6">
+            
+            <!-- Painel de KPIs (Indicadores) -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm flex items-center gap-3.5">
+                    <div class="w-11 h-11 rounded-xl bg-blue-50 text-brand-600 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-layer-group text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Atividades</p>
+                        <p id="kpi-total-atividades" class="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm flex items-center gap-3.5">
+                    <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                        <i class="fa-regular fa-clock text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Horas Totais</p>
+                        <p id="kpi-total-horas" class="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">0h 00m</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm flex items-center gap-3.5">
+                    <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-building-circle-check text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Unidades Visitadas</p>
+                        <p id="kpi-total-unidades" class="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm flex items-center gap-3.5">
+                    <div class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-camera text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Fotos Registradas</p>
+                        <p id="kpi-total-fotos" class="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grid Principal: Formulário (Esquerda/Topo) e Listagem (Direita/Base) -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                <!-- Formulário de Lançamento / Edição de Atividade -->
+                <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="bg-slate-50/80 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <span id="form-atividade-icon" class="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-plus"></i>
+                            </span>
+                            <h2 id="form-atividade-titulo" class="font-bold text-slate-800 text-base">Nova Atividade / Visita</h2>
+                        </div>
+                        <button type="button" id="btn-cancelar-edicao-atividade" onclick="resetFormAtividade()" class="hidden text-xs font-semibold text-slate-500 hover:text-red-600 transition">
+                            <i class="fa-solid fa-xmark mr-1"></i>Cancelar Edição
+                        </button>
+                    </div>
+
+                    <form id="form-atividade" onsubmit="handleSaveAtividade(event)" class="p-6 space-y-4">
+                        <input type="hidden" id="atividade-id">
+
+                        <!-- Seleção de Responsável -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="atividade-responsavel-select" class="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                    Responsável Técnico <span class="text-red-500">*</span>
+                                </label>
+                                <button type="button" onclick="switchTab('colaboradores')" class="text-xs text-brand-600 hover:underline font-medium">
+                                    + Cadastrar novo
+                                </button>
+                            </div>
+                            <select id="atividade-responsavel-select" onchange="onSelectResponsavel()" required class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                                <option value="">Selecione um colaborador...</option>
+                            </select>
+                        </div>
+
+                        <!-- Cargo e Unidade -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="atividade-cargo" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                    Cargo / Função <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="atividade-cargo" required placeholder="Ex: Analista de TI" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                            </div>
+                            <div>
+                                <label for="atividade-unidade" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                    Unidade / Local <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="atividade-unidade" required placeholder="Ex: Matriz - Depto. Operacional" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                            </div>
+                        </div>
+
+                        <!-- Data e Hora Inicial e Final -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="atividade-inicio" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                    Início (Data/Hora) <span class="text-red-500">*</span>
+                                </label>
+                                <input type="datetime-local" id="atividade-inicio" onchange="calcularDuracaoPreview()" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                            </div>
+                            <div>
+                                <label for="atividade-fim" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                    Término (Data/Hora) <span class="text-red-500">*</span>
+                                </label>
+                                <input type="datetime-local" id="atividade-fim" onchange="calcularDuracaoPreview()" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                            </div>
+                        </div>
+
+                        <!-- Indicador de Duração Calculada -->
+                        <div id="duracao-preview-box" class="rounded-xl bg-slate-50 border border-slate-200/80 px-4 py-2.5 flex items-center justify-between text-xs">
+                            <span class="text-slate-500 font-medium"><i class="fa-solid fa-stopwatch mr-1.5 text-brand-600"></i>Duração calculada:</span>
+                            <span id="duracao-preview-valor" class="font-bold text-slate-800">Preencha início e término</span>
+                        </div>
+
+                        <!-- Assunto e Status -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div class="sm:col-span-2">
+                                <label for="atividade-assunto" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                    Assunto / Título <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="atividade-assunto" required placeholder="Resumo objetivo da atividade" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                            </div>
+                            <div>
+                                <label for="atividade-status" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                    Status
+                                </label>
+                                <select id="atividade-status" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                                    <option value="Concluída">Concluída</option>
+                                    <option value="Em Andamento">Em Andamento</option>
+                                    <option value="Pendente">Pendente</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Descrição Detalhada -->
+                        <div>
+                            <label for="atividade-descricao" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                Descrição Detalhada <span class="text-red-500">*</span>
+                            </label>
+                            <textarea id="atividade-descricao" rows="3" required placeholder="Descreva as ações executadas, ocorrências, resultados obtidos e detalhes da unidade..." class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition resize-y"></textarea>
+                        </div>
+
+                        <!-- =============================================== -->
+                        <!-- 1. TIPO DE TRANSPORTE UTILIZADO NA VISITA       -->
+                        <!-- =============================================== -->
+                        <div class="pt-3 border-t border-slate-100 space-y-3">
+                            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                <i class="fa-solid fa-car-side text-brand-600 mr-1"></i> Transporte Utilizado na Visita <span class="text-red-500">*</span>
+                            </label>
+                            
+                            <div class="grid grid-cols-2 gap-2.5">
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="atividade-transporte" value="Corporativo" checked onchange="toggleTransporteDetalhes()" class="peer sr-only">
+                                    <div class="p-3 rounded-xl border border-slate-200 bg-slate-50/60 peer-checked:border-brand-600 peer-checked:bg-brand-50/70 peer-checked:text-brand-900 transition flex items-center gap-2.5">
+                                        <div class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-brand-600 shrink-0 shadow-sm">
+                                            <i class="fa-solid fa-building-shield"></i>
+                                        </div>
+                                        <div class="leading-tight">
+                                            <span class="block text-xs font-bold">Corporativo</span>
+                                            <span class="block text-[10px] text-slate-500">Frota / Empresa</span>
+                                        </div>
+                                    </div>
+                                </label>
+
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="atividade-transporte" value="Próprio" onchange="toggleTransporteDetalhes()" class="peer sr-only">
+                                    <div class="p-3 rounded-xl border border-slate-200 bg-slate-50/60 peer-checked:border-amber-600 peer-checked:bg-amber-50/70 peer-checked:text-amber-900 transition flex items-center gap-2.5">
+                                        <div class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-amber-600 shrink-0 shadow-sm">
+                                            <i class="fa-solid fa-car"></i>
+                                        </div>
+                                        <div class="leading-tight">
+                                            <span class="block text-xs font-bold">Próprio</span>
+                                            <span class="block text-[10px] text-slate-500">Veículo Particular</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div>
+                                <input type="text" id="atividade-transporte-detalhe" placeholder="Opcional: Placa, prefixo da frota ou motorista (Ex: Frota #04 - Placa QZA-4B21)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                            </div>
+                        </div>
+
+                        <!-- =============================================== -->
+                        <!-- 2. RESPONSÁVEIS NO LOCAL DA VISITA              -->
+                        <!-- =============================================== -->
+                        <div class="pt-3 border-t border-slate-100 space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                    <i class="fa-solid fa-user-check text-brand-600 mr-1"></i> Responsáveis no Local (Recepção)
+                                </label>
+                                <button type="button" onclick="addResponsavelLocalRow()" class="text-xs font-semibold text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                                    <i class="fa-solid fa-plus text-[10px]"></i> Adicionar contato
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-slate-500">Informe quem recebeu ou acompanhou a atividade na unidade visitada.</p>
+
+                            <div id="responsaveis-locais-list" class="space-y-2.5">
+                                <!-- Linhas dinâmicas de responsáveis no local -->
+                            </div>
+                        </div>
+
+                        <!-- =============================================== -->
+                        <!-- 3. REGISTRO FOTOGRÁFICO DA VISITA               -->
+                        <!-- =============================================== -->
+                        <div class="pt-3 border-t border-slate-100 space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                    <i class="fa-solid fa-camera text-brand-600 mr-1"></i> Fotos da Visita / Evidências
+                                </label>
+                                <span id="fotos-count-label" class="text-[11px] font-semibold text-slate-500">0 fotos</span>
+                            </div>
+
+                            <label for="atividade-fotos-input" class="cursor-pointer border-2 border-dashed border-slate-300 hover:border-brand-500 hover:bg-brand-50/40 rounded-xl p-4 flex flex-col items-center justify-center text-center transition group">
+                                <div class="w-10 h-10 rounded-full bg-brand-50 text-brand-600 group-hover:scale-105 transition flex items-center justify-center mb-1.5">
+                                    <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                                </div>
+                                <span class="text-xs font-semibold text-slate-700">Clique para anexar fotos ou abrir câmera</span>
+                                <span class="text-[11px] text-slate-400 mt-0.5">JPG, PNG ou WEBP (compressão automática inteligente)</span>
+                                <input type="file" id="atividade-fotos-input" accept="image/*" multiple onchange="handleFotosUpload(event)" class="hidden">
+                            </label>
+
+                            <!-- Grid de miniaturas com legendas -->
+                            <div id="fotos-preview-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 empty:hidden pt-1">
+                                <!-- Thumbnails renderizados via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Botões de Submissão -->
+                        <div class="pt-3 border-t border-slate-100 flex items-center gap-3">
+                            <button type="submit" id="btn-salvar-atividade" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2 text-sm">
+                                <i class="fa-solid fa-check"></i>
+                                <span>Registrar Atividade</span>
+                            </button>
+                            <button type="button" onclick="resetFormAtividade()" class="px-4 py-3 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium text-sm transition" title="Limpar campos">
+                                <i class="fa-solid fa-eraser"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Coluna Direita: Filtros, Exportação e Lista de Atividades -->
+                <div class="lg:col-span-7 space-y-4">
+                    
+                    <!-- Barra de Ações do Relatório (PDF, Impressão, WhatsApp, E-mail) -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-3 border-b border-slate-100">
+                            <div>
+                                <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                                    <i class="fa-solid fa-file-export text-brand-600"></i>
+                                    Exportação e Compartilhamento do Relatório
+                                </h3>
+                                <p class="text-xs text-slate-500">Considera os filtros aplicados abaixo (<span id="count-filtrados-label" class="font-semibold text-slate-700">0</span> registros)</p>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                            <button type="button" onclick="openPreviewModal()" class="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm">
+                                <i class="fa-solid fa-eye"></i> Visualizar / Imprimir
+                            </button>
+                            <button type="button" onclick="downloadPDF()" class="px-3 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm">
+                                <i class="fa-solid fa-file-pdf"></i> Baixar PDF
+                            </button>
+                            <button type="button" onclick="shareWhatsAppConsolidado()" class="px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm">
+                                <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp
+                            </button>
+                            <button type="button" onclick="shareEmailConsolidado()" class="px-3 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm">
+                                <i class="fa-solid fa-envelope"></i> E-mail
+                            </button>
+                            <button type="button" onclick="copyReportTextConsolidado()" class="col-span-2 sm:col-span-1 px-3 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+                                <i class="fa-regular fa-copy"></i> Copiar Texto
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtros de Busca -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                <i class="fa-solid fa-filter text-brand-600"></i> Filtrar Lançamentos
+                            </span>
+                            <button type="button" onclick="limparFiltros()" class="text-xs text-brand-600 hover:underline font-medium">
+                                Limpar filtros
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                            <!-- Busca por texto -->
+                            <div class="relative">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                                <input type="text" id="filtro-texto" oninput="renderAtividades()" placeholder="Assunto, contato..." class="w-full rounded-xl border border-slate-300 pl-8 pr-3 py-2 text-xs text-slate-800 focus:border-brand-500 outline-none">
+                            </div>
+
+                            <!-- Filtro por Responsável -->
+                            <div>
+                                <select id="filtro-responsavel" onchange="renderAtividades()" class="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-800 focus:border-brand-500 outline-none">
+                                    <option value="">Todos Responsáveis</option>
+                                </select>
+                            </div>
+
+                            <!-- Filtro por Unidade -->
+                            <div>
+                                <input type="text" id="filtro-unidade" oninput="renderAtividades()" placeholder="Unidade / Setor..." class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:border-brand-500 outline-none">
+                            </div>
+
+                            <!-- Filtro por Transporte -->
+                            <div>
+                                <select id="filtro-transporte" onchange="renderAtividades()" class="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-800 focus:border-brand-500 outline-none">
+                                    <option value="">Todos Transportes</option>
+                                    <option value="Corporativo">Transp. Corporativo</option>
+                                    <option value="Próprio">Transp. Próprio</option>
+                                </select>
+                            </div>
+
+                            <!-- Filtro por Data -->
+                            <div>
+                                <input type="date" id="filtro-data" onchange="renderAtividades()" class="w-full rounded-xl border border-slate-300 px-2.5 py-2 text-xs text-slate-800 focus:border-brand-500 outline-none" title="Filtrar por data da atividade">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lista de Atividades Lançadas -->
+                    <div id="lista-atividades-container" class="space-y-3">
+                        <!-- Cards das atividades serão renderizados aqui via JS -->
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ABA 2: CADASTRO DE COLABORADORES           -->
+        <!-- ========================================== -->
+        <section id="view-colaboradores" class="hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                <!-- Formulário de Colaborador -->
+                <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="bg-slate-50/80 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-user-plus"></i>
+                            </span>
+                            <h2 id="form-colab-titulo" class="font-bold text-slate-800 text-base">Cadastrar Colaborador</h2>
+                        </div>
+                        <button type="button" id="btn-cancelar-edicao-colab" onclick="resetFormColab()" class="hidden text-xs font-semibold text-slate-500 hover:text-red-600 transition">
+                            <i class="fa-solid fa-xmark mr-1"></i>Cancelar
+                        </button>
+                    </div>
+
+                    <form id="form-colaborador" onsubmit="handleSaveColaborador(event)" class="p-6 space-y-4">
+                        <input type="hidden" id="colab-id">
+
+                        <div>
+                            <label for="colab-nome" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                Nome Completo <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="colab-nome" required placeholder="Ex: Carlos Eduardo Mendes" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                        </div>
+
+                        <div>
+                            <label for="colab-cargo" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                Cargo / Função Padrão <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="colab-cargo" required placeholder="Ex: Coordenador de Operações" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                        </div>
+
+                        <div>
+                            <label for="colab-unidade" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                Unidade / Setor Padrão
+                            </label>
+                            <input type="text" id="colab-unidade" placeholder="Ex: Unidade Central - Setor Técnico" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="colab-email" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                    E-mail (Opcional)
+                                </label>
+                                <input type="email" id="colab-email" placeholder="nome@empresa.com.br" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                            </div>
+                            <div>
+                                <label for="colab-telefone" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                                    Telefone / WhatsApp
+                                </label>
+                                <input type="text" id="colab-telefone" placeholder="(92) 99999-0000" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition">
+                            </div>
+                        </div>
+
+                        <div class="pt-2 flex items-center gap-3">
+                            <button type="submit" id="btn-salvar-colab" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2 text-sm">
+                                <i class="fa-solid fa-floppy-disk"></i>
+                                <span>Salvar Colaborador</span>
+                            </button>
+                            <button type="button" onclick="resetFormColab()" class="px-4 py-3 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium text-sm transition" title="Limpar">
+                                <i class="fa-solid fa-eraser"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Lista de Colaboradores Cadastrados -->
+                <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="bg-slate-50/80 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+                        <h3 class="font-bold text-slate-800 text-base">Equipe / Colaboradores Cadastrados</h3>
+                        <span id="colab-total-badge" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-brand-100 text-brand-800">0 cadastrados</span>
+                    </div>
+                    
+                    <div id="lista-colaboradores-container" class="divide-y divide-slate-100">
+                        <!-- Lista renderizada via JS -->
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Área Oculta Exclusiva para Impressão Direta do Navegador (@media print) -->
+    <div id="print-area" class="hidden"></div>
+
+    <!-- Rodapé -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-auto no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+            <p><strong>SGA</strong> — Sistema de Gestão e Relatório de Atividades</p>
+            <p>Dados armazenados localmente com segurança no seu navegador.</p>
+        </div>
+    </footer>
+
+    <!-- Lógica da Aplicação -->
+    <script>
+        // =========================================================================
+        // ESTADO GLOBAL & CHAVES DO LOCALSTORAGE
+        // =========================================================================
+        const STORAGE_KEYS = {
+            COLABORADORES: 'sga_colaboradores_v3',
+            ATIVIDADES: 'sga_atividades_v3'
+        };
+
+        let colaboradores = [];
+        let atividades = [];
+        let fotosTemporarias = []; // Array de { id, dataUrl, legenda } no formulário atual
+        let confirmCallback = null;
+
+        // =========================================================================
+        // GERADOR DE IMAGENS DEMONSTRATIVAS VIA CANVAS PARA DADOS INICIAIS
+        // =========================================================================
+        function gerarImagemDemonstracaoCanvas(titulo, subtitulo, corFundo1, corFundo2, iconeTexto) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 360;
+            const ctx = canvas.getContext('2d');
+
+            // Gradiente de fundo
+            const grad = ctx.createLinearGradient(0, 0, 640, 360);
+            grad.addColorStop(0, corFundo1);
+            grad.addColorStop(1, corFundo2);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 640, 360);
+
+            // Grade técnica sutil
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < 640; x += 32) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, 360);
+                ctx.stroke();
+            }
+            for (let y = 0; y < 360; y += 32) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(640, y);
+                ctx.stroke();
+            }
+
+            // Moldura interna
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(20, 20, 600, 320);
+
+            // Círculo central decorativo
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.beginPath();
+            ctx.arc(320, 140, 44, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Texto do ícone
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(iconeTexto, 320, 150);
+
+            // Título da foto
+            ctx.font = 'bold 22px Inter, sans-serif';
+            ctx.fillText(titulo, 320, 225);
+
+            // Subtítulo
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.font = '15px Inter, sans-serif';
+            ctx.fillText(subtitulo, 320, 255);
+
+            // Carimbo de data/registro
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fillRect(20, 304, 600, 36);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '12px monospace';
+            ctx.fillText('REGISTRO FOTOGRÁFICO DE CAMPO • EVIDÊNCIA TÉCNICA', 320, 326);
+
+            return canvas.toDataURL('image/jpeg', 0.82);
+        }
+
+        // =========================================================================
+        // INICIALIZAÇÃO E DADOS DE EXEMPLO
+        // =========================================================================
+        window.addEventListener('DOMContentLoaded', () => {
+            carregarDadosIniciais();
+            preencherDatasPadraoFormulario();
+            initResponsaveisLocaisForm();
+            atualizarSelectsColaboradores();
+            renderColaboradores();
+            renderAtividades();
+            atualizarKPIs();
+        });
+
+        function carregarDadosIniciais() {
+            const colabStorage = localStorage.getItem(STORAGE_KEYS.COLABORADORES);
+            const ativStorage = localStorage.getItem(STORAGE_KEYS.ATIVIDADES);
+
+            if (colabStorage) {
+                colaboradores = JSON.parse(colabStorage);
+            } else {
+                colaboradores = [
+                    {
+                        id: 'col-1',
+                        nome: 'Ana Beatriz Silva',
+                        cargo: 'Analista de Infraestrutura e Suporte',
+                        unidade: 'Unidade Matriz - TI',
+                        email: 'ana.silva@empresa.com.br',
+                        telefone: '(92) 99123-4567'
+                    },
+                    {
+                        id: 'col-2',
+                        nome: 'Marcos Vinícius Oliveira',
+                        cargo: 'Engenheiro de Manutenção',
+                        unidade: 'Unidade Industrial II - Operações',
+                        email: 'marcos.oliveira@empresa.com.br',
+                        telefone: '(92) 99234-5678'
+                    },
+                    {
+                        id: 'col-3',
+                        nome: 'Fernanda Costa Souza',
+                        cargo: 'Supervisora Administrativa',
+                        unidade: 'Unidade Centro - Administrativo',
+                        email: 'fernanda.souza@empresa.com.br',
+                        telefone: '(92) 99345-6789'
+                    }
+                ];
+                salvarColaboradoresStorage();
+            }
+
+            if (ativStorage) {
+                atividades = JSON.parse(ativStorage);
+            } else {
+                const hoje = new Date();
+                const yyyy = hoje.getFullYear();
+                const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+                const dd = String(hoje.getDate()).padStart(2, '0');
+
+                // Gera fotos demonstrativas em Canvas para ilustrar o funcionamento imediato
+                const fotoDemo1 = gerarImagemDemonstracaoCanvas(
+                    'Rack Principal & Servidores',
+                    'Unidade Matriz - Sala Cofre TI',
+                    '#1e3a8a',
+                    '#2563eb',
+                    'TI / RACK'
+                );
+                const fotoDemo2 = gerarImagemDemonstracaoCanvas(
+                    'Painel Elétrico & Gerador',
+                    'Unidade Industrial II - Subestação',
+                    '#065f46',
+                    '#059669',
+                    'ENERGIA'
+                );
+                const fotoDemo3 = gerarImagemDemonstracaoCanvas(
+                    'Sensores de Climatização',
+                    'Galpão Principal - Setor B',
+                    '#7c2d12',
+                    '#d97706',
+                    'HVAC'
+                );
+
+                atividades = [
+                    {
+                        id: 'atv-1',
+                        colaboradorId: 'col-1',
+                        responsavelNome: 'Ana Beatriz Silva',
+                        cargo: 'Analista de Infraestrutura e Suporte',
+                        unidade: 'Unidade Matriz - TI',
+                        inicio: `${yyyy}-${mm}-${dd}T08:00`,
+                        fim: `${yyyy}-${mm}-${dd}T11:30`,
+                        duracaoMinutos: 210,
+                        assunto: 'Manutenção preventiva nos servidores e backup semanal',
+                        descricao: 'Realizada verificação de integridade dos discos RAID, atualização de pacotes de segurança do sistema operacional e validação dos logs de backup em nuvem da Unidade Matriz.',
+                        status: 'Concluída',
+                        transporteTipo: 'Corporativo',
+                        transporteDetalhe: 'Veículo Frota #04 - Placa QZA-4B21',
+                        responsaveisLocais: [
+                            { nome: 'Roberto Almeida', cargo: 'Coordenador de TI Local', telefone: '(92) 99411-2233' }
+                        ],
+                        fotos: [
+                            {
+                                id: 'foto-demo-1',
+                                dataUrl: fotoDemo1,
+                                legenda: 'Conferência dos switches e servidores após manutenção'
+                            }
+                        ]
+                    },
+                    {
+                        id: 'atv-2',
+                        colaboradorId: 'col-2',
+                        responsavelNome: 'Marcos Vinícius Oliveira',
+                        cargo: 'Engenheiro de Manutenção',
+                        unidade: 'Unidade Industrial II - Operações',
+                        inicio: `${yyyy}-${mm}-${dd}T13:30`,
+                        fim: `${yyyy}-${mm}-${dd}T17:00`,
+                        duracaoMinutos: 210,
+                        assunto: 'Inspeção técnica no sistema de climatização e geradores',
+                        descricao: 'Vistoria completa nos quadros elétricos auxiliares, teste de partida automática do grupo gerador de emergência e calibração dos sensores de temperatura do galpão principal.',
+                        status: 'Concluída',
+                        transporteTipo: 'Próprio',
+                        transporteDetalhe: '38 km percorridos (ida e volta)',
+                        responsaveisLocais: [
+                            { nome: 'Eng. Patrícia Nogueira', cargo: 'Gerente de Planta', telefone: '(92) 99522-8899' },
+                            { nome: 'José Carlos Santos', cargo: 'Técnico de Segurança', telefone: '(92) 99876-5432' }
+                        ],
+                        fotos: [
+                            {
+                                id: 'foto-demo-2',
+                                dataUrl: fotoDemo2,
+                                legenda: 'Quadro de transferência automática do gerador'
+                            },
+                            {
+                                id: 'foto-demo-3',
+                                dataUrl: fotoDemo3,
+                                legenda: 'Aferição dos controladores de temperatura'
+                            }
+                        ]
+                    }
+                ];
+                salvarAtividadesStorage();
+            }
+        }
+
+        function salvarColaboradoresStorage() {
+            localStorage.setItem(STORAGE_KEYS.COLABORADORES, JSON.stringify(colaboradores));
+        }
+
+        function salvarAtividadesStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEYS.ATIVIDADES, JSON.stringify(atividades));
+                return true;
+            } catch (e) {
+                console.error('Erro ao salvar no localStorage:', e);
+                showToast('Limite de armazenamento do navegador atingido! Remova algumas fotos antigas ou pesadas.', 'error');
+                return false;
+            }
+        }
+
+        // =========================================================================
+        // GESTÃO DINÂMICA DOS RESPONSÁVEIS NO LOCAL (RECEPÇÃO NA UNIDADE)
+        // =========================================================================
+        function initResponsaveisLocaisForm(lista = []) {
+            const container = document.getElementById('responsaveis-locais-list');
+            container.innerHTML = '';
+            if (lista && lista.length > 0) {
+                lista.forEach(item => addResponsavelLocalRow(item));
+            } else {
+                addResponsavelLocalRow();
+            }
+        }
+
+        function addResponsavelLocalRow(dados = { nome: '', cargo: '', telefone: '' }) {
+            const container = document.getElementById('responsaveis-locais-list');
+            const row = document.createElement('div');
+            row.className = 'resp-local-item bg-slate-50 border border-slate-200/90 rounded-xl p-3 space-y-2 relative';
+
+            row.innerHTML = `
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Contato na Unidade</span>
+                    <button type="button" onclick="removeResponsavelLocalRow(this)" class="text-slate-400 hover:text-red-600 text-xs px-1.5 py-0.5 rounded transition" title="Remover contato">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input type="text" class="resp-local-nome w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-brand-500 outline-none" placeholder="Nome do responsável" value="${escapeHTML(dados.nome || '')}">
+                    <input type="text" class="resp-local-cargo w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-brand-500 outline-none" placeholder="Cargo / Setor local" value="${escapeHTML(dados.cargo || '')}">
+                    <input type="text" class="resp-local-tel w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-brand-500 outline-none" placeholder="Telefone / WhatsApp" value="${escapeHTML(dados.telefone || '')}">
+                </div>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeResponsavelLocalRow(btn) {
+            const container = document.getElementById('responsaveis-locais-list');
+            const row = btn.closest('.resp-local-item');
+            if (container.children.length > 1) {
+                row.remove();
+            } else {
+                row.querySelector('.resp-local-nome').value = '';
+                row.querySelector('.resp-local-cargo').value = '';
+                row.querySelector('.resp-local-tel').value = '';
+            }
+        }
+
+        function coletarResponsaveisLocaisForm() {
+            const rows = document.querySelectorAll('#responsaveis-locais-list .resp-local-item');
+            const resultado = [];
+            rows.forEach(row => {
+                const nome = row.querySelector('.resp-local-nome').value.trim();
+                const cargo = row.querySelector('.resp-local-cargo').value.trim();
+                const telefone = row.querySelector('.resp-local-tel').value.trim();
+                if (nome || cargo || telefone) {
+                    resultado.push({ nome: nome || 'Não informado', cargo, telefone });
+                }
+            });
+            return resultado;
+        }
+
+        // =========================================================================
+        // GESTÃO E COMPRESSÃO DE FOTOS DA VISITA (CANVAS CLIENT-SIDE)
+        // =========================================================================
+        function toggleTransporteDetalhes() {
+            const tipo = document.querySelector('input[name="atividade-transporte"]:checked')?.value;
+            const inputDetalhe = document.getElementById('atividade-transporte-detalhe');
+            if (tipo === 'Corporativo') {
+                inputDetalhe.placeholder = 'Opcional: Placa, prefixo da frota ou motorista (Ex: Frota #04 - Placa QZA-4B21)';
+            } else {
+                inputDetalhe.placeholder = 'Opcional: Placa do veículo particular ou KM rodado para reembolso (Ex: 42 km)';
+            }
+        }
+
+        async function handleFotosUpload(event) {
+            const files = Array.from(event.target.files || []);
+            if (files.length === 0) return;
+
+            if (fotosTemporarias.length + files.length > 12) {
+                showToast('Máximo recomendado de 12 fotos por atividade para manter o relatório leve.', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            showToast(`Processando ${files.length} foto(s)...`, 'info');
+
+            for (const file of files) {
+                if (!file.type.startsWith('image/')) continue;
+                try {
+                    const compressedDataUrl = await compressImageFile(file, 900, 0.75);
+                    fotosTemporarias.push({
+                        id: 'foto-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+                        dataUrl: compressedDataUrl,
+                        legenda: ''
+                    });
+                } catch (err) {
+                    console.error('Erro ao comprimir imagem:', err);
+                    showToast(`Falha ao processar a imagem ${file.name}.`, 'error');
+                }
+            }
+
+            event.target.value = '';
+            renderFotosPreviewForm();
+        }
+
+        function compressImageFile(file, maxWidth = 900, quality = 0.75) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = reject;
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onerror = reject;
+                    img.onload = () => {
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0, 0, width, height);
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function updateFotoLegenda(fotoId, novaLegenda) {
+            const foto = fotosTemporarias.find(f => f.id === fotoId);
+            if (foto) {
+                foto.legenda = novaLegenda;
+            }
+        }
+
+        function removeFotoTemporaria(fotoId) {
+            fotosTemporarias = fotosTemporarias.filter(f => f.id !== fotoId);
+            renderFotosPreviewForm();
+        }
+
+        function renderFotosPreviewForm() {
+            const grid = document.getElementById('fotos-preview-grid');
+            const countLabel = document.getElementById('fotos-count-label');
+            countLabel.textContent = `${fotosTemporarias.length} foto${fotosTemporarias.length === 1 ? '' : 's'}`;
+
+            if (fotosTemporarias.length === 0) {
+                grid.innerHTML = '';
+                return;
+            }
+
+            grid.innerHTML = fotosTemporarias.map((foto, idx) => `
+                <div class="border border-slate-200 rounded-xl p-2 bg-slate-50 flex flex-col gap-2 relative group">
+                    <div class="relative h-28 w-full rounded-lg overflow-hidden bg-slate-200">
+                        <img src="${foto.dataUrl}" alt="Foto ${idx + 1}" onclick="openLightbox('${foto.dataUrl}', '${escapeHTML(foto.legenda || `Foto ${idx + 1}`)}')" class="w-full h-full object-cover cursor-zoom-in">
+                        <span class="absolute top-1.5 left-1.5 bg-slate-900/75 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                            #${idx + 1}
+                        </span>
+                        <button type="button" onclick="removeFotoTemporaria('${foto.id}')" class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600 text-white hover:bg-red-700 flex items-center justify-center shadow text-xs transition" title="Remover foto">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <input type="text" value="${escapeHTML(foto.legenda)}" oninput="updateFotoLegenda('${foto.id}', this.value)" placeholder="Legenda da foto (opcional)..." class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-brand-500 outline-none">
+                </div>
+            `).join('');
+        }
+
+        function openLightbox(src, caption = '') {
+            document.getElementById('lightbox-img').src = src;
+            document.getElementById('lightbox-caption').textContent = caption;
+            const modal = document.getElementById('lightbox-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeLightbox() {
+            const modal = document.getElementById('lightbox-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.getElementById('lightbox-img').src = '';
+        }
+
+        // =========================================================================
+        // NAVEGAÇÃO ENTRE ABAS
+        // =========================================================================
+        function switchTab(tabName) {
+            const viewAtividades = document.getElementById('view-atividades');
+            const viewColaboradores = document.getElementById('view-colaboradores');
+            const btnAtividades = document.getElementById('tab-btn-atividades');
+            const btnColaboradores = document.getElementById('tab-btn-colaboradores');
+
+            if (tabName === 'atividades') {
+                viewAtividades.classList.remove('hidden');
+                viewColaboradores.classList.add('hidden');
+
+                btnAtividades.className = 'flex-1 sm:flex-initial px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 bg-white text-brand-700 shadow-sm';
+                btnColaboradores.className = 'flex-1 sm:flex-initial px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 text-slate-600 hover:text-slate-900';
+            } else {
+                viewAtividades.classList.add('hidden');
+                viewColaboradores.classList.remove('hidden');
+
+                btnColaboradores.className = 'flex-1 sm:flex-initial px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 bg-white text-brand-700 shadow-sm';
+                btnAtividades.className = 'flex-1 sm:flex-initial px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 text-slate-600 hover:text-slate-900';
+            }
+        }
+
+        // =========================================================================
+        // GESTÃO DE COLABORADORES (CRUD)
+        // =========================================================================
+        function handleSaveColaborador(e) {
+            e.preventDefault();
+            const id = document.getElementById('colab-id').value;
+            const nome = document.getElementById('colab-nome').value.trim();
+            const cargo = document.getElementById('colab-cargo').value.trim();
+            const unidade = document.getElementById('colab-unidade').value.trim();
+            const email = document.getElementById('colab-email').value.trim();
+            const telefone = document.getElementById('colab-telefone').value.trim();
+
+            if (!nome || !cargo) {
+                showToast('Preencha o Nome e o Cargo do colaborador.', 'error');
+                return;
+            }
+
+            if (id) {
+                const index = colaboradores.findIndex(c => c.id === id);
+                if (index !== -1) {
+                    colaboradores[index] = { id, nome, cargo, unidade, email, telefone };
+                    showToast('Colaborador atualizado com sucesso!', 'success');
+                }
+            } else {
+                const novoColab = {
+                    id: 'col-' + Date.now(),
+                    nome,
+                    cargo,
+                    unidade,
+                    email,
+                    telefone
+                };
+                colaboradores.push(novoColab);
+                showToast('Colaborador cadastrado com sucesso!', 'success');
+            }
+
+            salvarColaboradoresStorage();
+            resetFormColab();
+            renderColaboradores();
+            atualizarSelectsColaboradores();
+            atualizarKPIs();
+        }
+
+        function editColaborador(id) {
+            const colab = colaboradores.find(c => c.id === id);
+            if (!colab) return;
+
+            document.getElementById('colab-id').value = colab.id;
+            document.getElementById('colab-nome').value = colab.nome;
+            document.getElementById('colab-cargo').value = colab.cargo;
+            document.getElementById('colab-unidade').value = colab.unidade || '';
+            document.getElementById('colab-email').value = colab.email || '';
+            document.getElementById('colab-telefone').value = colab.telefone || '';
+
+            document.getElementById('form-colab-titulo').textContent = 'Editar Colaborador';
+            document.getElementById('btn-salvar-colab').innerHTML = '<i class="fa-solid fa-check"></i><span>Atualizar Cadastro</span>';
+            document.getElementById('btn-cancelar-edicao-colab').classList.remove('hidden');
+
+            document.getElementById('form-colaborador').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function deleteColaborador(id) {
+            const colab = colaboradores.find(c => c.id === id);
+            if (!colab) return;
+
+            openConfirmModal(
+                'Excluir Colaborador',
+                `Deseja realmente remover "${colab.nome}" da lista de colaboradores? As atividades já lançadas em seu nome serão mantidas no histórico.`,
+                () => {
+                    colaboradores = colaboradores.filter(c => c.id !== id);
+                    salvarColaboradoresStorage();
+                    renderColaboradores();
+                    atualizarSelectsColaboradores();
+                    atualizarKPIs();
+                    showToast('Colaborador excluído.', 'info');
+                }
+            );
+        }
+
+        function resetFormColab() {
+            document.getElementById('form-colaborador').reset();
+            document.getElementById('colab-id').value = '';
+            document.getElementById('form-colab-titulo').textContent = 'Cadastrar Colaborador';
+            document.getElementById('btn-salvar-colab').innerHTML = '<i class="fa-solid fa-floppy-disk"></i><span>Salvar Colaborador</span>';
+            document.getElementById('btn-cancelar-edicao-colab').classList.add('hidden');
+        }
+
+        function renderColaboradores() {
+            const container = document.getElementById('lista-colaboradores-container');
+            document.getElementById('badge-colab-count').textContent = colaboradores.length;
+            document.getElementById('colab-total-badge').textContent = `${colaboradores.length} cadastrado${colaboradores.length === 1 ? '' : 's'}`;
+
+            if (colaboradores.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-slate-500">
+                        <i class="fa-solid fa-users-slash text-3xl text-slate-300 mb-2"></i>
+                        <p class="text-sm font-medium">Nenhum colaborador cadastrado.</p>
+                        <p class="text-xs mt-1">Utilize o formulário ao lado para adicionar responsáveis.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = colaboradores.map(c => {
+                const iniciais = c.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+                return `
+                    <div class="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition">
+                        <div class="flex items-start sm:items-center gap-3.5">
+                            <div class="w-10 h-10 rounded-full bg-brand-100 text-brand-700 font-bold text-sm flex items-center justify-center shrink-0">
+                                ${escapeHTML(iniciais)}
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-900 text-sm">${escapeHTML(c.nome)}</h4>
+                                <p class="text-xs font-medium text-brand-700">${escapeHTML(c.cargo)}</p>
+                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-500">
+                                    ${c.unidade ? `<span><i class="fa-solid fa-building mr-1 text-slate-400"></i>${escapeHTML(c.unidade)}</span>` : ''}
+                                    ${c.email ? `<span><i class="fa-regular fa-envelope mr-1 text-slate-400"></i>${escapeHTML(c.email)}</span>` : ''}
+                                    ${c.telefone ? `<span><i class="fa-brands fa-whatsapp mr-1 text-emerald-500"></i>${escapeHTML(c.telefone)}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 self-end sm:self-center">
+                            <button type="button" onclick="editColaborador('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-brand-300 hover:bg-brand-50 text-slate-600 hover:text-brand-700 text-xs font-medium transition flex items-center gap-1.5" title="Editar">
+                                <i class="fa-solid fa-pen"></i> Editar
+                            </button>
+                            <button type="button" onclick="deleteColaborador('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-red-300 hover:bg-red-50 text-slate-600 hover:text-red-600 text-xs font-medium transition flex items-center gap-1.5" title="Excluir">
+                                <i class="fa-solid fa-trash-can"></i> Excluir
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function atualizarSelectsColaboradores() {
+            const selectForm = document.getElementById('atividade-responsavel-select');
+            const selectFiltro = document.getElementById('filtro-responsavel');
+
+            const valorAtualForm = selectForm.value;
+            const valorAtualFiltro = selectFiltro.value;
+
+            selectForm.innerHTML = '<option value="">Selecione um colaborador...</option>' +
+                colaboradores.map(c => `<option value="${c.id}">${escapeHTML(c.nome)} — ${escapeHTML(c.cargo)}</option>`).join('');
+
+            const nomesUnicos = new Set(colaboradores.map(c => c.nome));
+            atividades.forEach(a => nomesUnicos.add(a.responsavelNome));
+
+            selectFiltro.innerHTML = '<option value="">Todos Responsáveis</option>' +
+                Array.from(nomesUnicos).sort().map(nome => `<option value="${escapeHTML(nome)}">${escapeHTML(nome)}</option>`).join('');
+
+            if (valorAtualForm) selectForm.value = valorAtualForm;
+            if (valorAtualFiltro) selectFiltro.value = valorAtualFiltro;
+        }
+
+        function onSelectResponsavel() {
+            const select = document.getElementById('atividade-responsavel-select');
+            const colabId = select.value;
+            const colab = colaboradores.find(c => c.id === colabId);
+
+            if (colab) {
+                document.getElementById('atividade-cargo').value = colab.cargo;
+                const unidadeInput = document.getElementById('atividade-unidade');
+                if (!unidadeInput.value.trim() || !document.getElementById('atividade-id').value) {
+                    if (colab.unidade) unidadeInput.value = colab.unidade;
+                }
+            }
+        }
+
+        // =========================================================================
+        // GESTÃO DE ATIVIDADES (CRUD & CÁLCULOS DE TEMPO)
+        // =========================================================================
+        function preencherDatasPadraoFormulario() {
+            const agora = new Date();
+            const umaHoraAtras = new Date(agora.getTime() - 60 * 60 * 1000);
+
+            document.getElementById('atividade-inicio').value = formatToDateTimeLocal(umaHoraAtras);
+            document.getElementById('atividade-fim').value = formatToDateTimeLocal(agora);
+            calcularDuracaoPreview();
+        }
+
+        function formatToDateTimeLocal(date) {
+            const yyyy = date.getFullYear();
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            const hh = String(date.getHours()).padStart(2, '0');
+            const min = String(date.getMinutes()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+        }
+
+        function calcularDuracaoMinutos(inicioStr, fimStr) {
+            if (!inicioStr || !fimStr) return null;
+            const dInicio = new Date(inicioStr);
+            const dFim = new Date(fimStr);
+            const diffMs = dFim - dInicio;
+            return Math.round(diffMs / 60000);
+        }
+
+        function formatarMinutosParaTexto(totalMinutos) {
+            if (totalMinutos === null || isNaN(totalMinutos)) return '—';
+            if (totalMinutos < 0) return 'Inválido (Término menor que início)';
+            const horas = Math.floor(totalMinutos / 60);
+            const mins = totalMinutos % 60;
+            return `${horas}h ${String(mins).padStart(2, '0')}m`;
+        }
+
+        function calcularDuracaoPreview() {
+            const inicio = document.getElementById('atividade-inicio').value;
+            const fim = document.getElementById('atividade-fim').value;
+            const box = document.getElementById('duracao-preview-box');
+            const valorEl = document.getElementById('duracao-preview-valor');
+
+            const mins = calcularDuracaoMinutos(inicio, fim);
+
+            if (mins === null) {
+                valorEl.textContent = 'Preencha início e término';
+                valorEl.className = 'font-bold text-slate-600';
+                box.className = 'rounded-xl bg-slate-50 border border-slate-200/80 px-4 py-2.5 flex items-center justify-between text-xs';
+                return;
+            }
+
+            if (mins <= 0) {
+                valorEl.textContent = 'A data/hora final deve ser maior que a inicial!';
+                valorEl.className = 'font-bold text-red-600';
+                box.className = 'rounded-xl bg-red-50 border border-red-200 px-4 py-2.5 flex items-center justify-between text-xs';
+            } else {
+                valorEl.textContent = formatarMinutosParaTexto(mins);
+                valorEl.className = 'font-bold text-emerald-700';
+                box.className = 'rounded-xl bg-emerald-50/70 border border-emerald-200 px-4 py-2.5 flex items-center justify-between text-xs';
+            }
+        }
+
+        function handleSaveAtividade(e) {
+            e.preventDefault();
+
+            const id = document.getElementById('atividade-id').value;
+            const selectResp = document.getElementById('atividade-responsavel-select');
+            const colaboradorId = selectResp.value;
+            const colabObj = colaboradores.find(c => c.id === colaboradorId);
+
+            let responsavelNome = colabObj ? colabObj.nome : '';
+            if (!responsavelNome && id) {
+                const ativExistente = atividades.find(a => a.id === id);
+                if (ativExistente) responsavelNome = ativExistente.responsavelNome;
+            }
+
+            const cargo = document.getElementById('atividade-cargo').value.trim();
+            const unidade = document.getElementById('atividade-unidade').value.trim();
+            const inicio = document.getElementById('atividade-inicio').value;
+            const fim = document.getElementById('atividade-fim').value;
+            const assunto = document.getElementById('atividade-assunto').value.trim();
+            const status = document.getElementById('atividade-status').value;
+            const descricao = document.getElementById('atividade-descricao').value.trim();
+
+            if (!responsavelNome) {
+                showToast('Selecione um responsável válido.', 'error');
+                return;
+            }
+
+            const duracaoMinutos = calcularDuracaoMinutos(inicio, fim);
+            if (duracaoMinutos === null || duracaoMinutos <= 0) {
+                showToast('Erro: A Data/Hora Final deve ser posterior à Data/Hora Inicial.', 'error');
+                document.getElementById('atividade-fim').focus();
+                return;
+            }
+
+            // Coleta transporte, responsáveis no local e fotos
+            const transporteTipo = document.querySelector('input[name="atividade-transporte"]:checked')?.value || 'Corporativo';
+            const transporteDetalhe = document.getElementById('atividade-transporte-detalhe').value.trim();
+            const responsaveisLocais = coletarResponsaveisLocaisForm();
+
+            const payload = {
+                id: id || 'atv-' + Date.now(),
+                colaboradorId,
+                responsavelNome,
+                cargo,
+                unidade,
+                inicio,
+                fim,
+                duracaoMinutos,
+                assunto,
+                descricao,
+                status,
+                transporteTipo,
+                transporteDetalhe,
+                responsaveisLocais,
+                fotos: JSON.parse(JSON.stringify(fotosTemporarias))
+            };
+
+            const backupAtividades = JSON.parse(JSON.stringify(atividades));
+
+            if (id) {
+                const idx = atividades.findIndex(a => a.id === id);
+                if (idx !== -1) {
+                    atividades[idx] = payload;
+                }
+            } else {
+                atividades.unshift(payload);
+            }
+
+            if (!salvarAtividadesStorage()) {
+                atividades = backupAtividades;
+                return;
+            }
+
+            showToast(id ? 'Atividade atualizada com sucesso!' : 'Atividade registrada no relatório!', 'success');
+            resetFormAtividade();
+            atualizarSelectsColaboradores();
+            renderAtividades();
+            atualizarKPIs();
+        }
+
+        function editAtividade(id) {
+            const atv = atividades.find(a => a.id === id);
+            if (!atv) return;
+
+            document.getElementById('atividade-id').value = atv.id;
+            
+            const selectResp = document.getElementById('atividade-responsavel-select');
+            const optionExists = Array.from(selectResp.options).some(opt => opt.value === atv.colaboradorId);
+            if (optionExists) {
+                selectResp.value = atv.colaboradorId;
+            } else {
+                const tempOpt = new Option(`${atv.responsavelNome} (Histórico)`, atv.colaboradorId);
+                selectResp.add(tempOpt);
+                selectResp.value = atv.colaboradorId;
+            }
+
+            document.getElementById('atividade-cargo').value = atv.cargo;
+            document.getElementById('atividade-unidade').value = atv.unidade;
+            document.getElementById('atividade-inicio').value = atv.inicio;
+            document.getElementById('atividade-fim').value = atv.fim;
+            document.getElementById('atividade-assunto').value = atv.assunto;
+            document.getElementById('atividade-status').value = atv.status || 'Concluída';
+            document.getElementById('atividade-descricao').value = atv.descricao;
+
+            // Preenche Transporte
+            const tipoTransp = atv.transporteTipo || 'Corporativo';
+            const radioTransp = document.querySelector(`input[name="atividade-transporte"][value="${tipoTransp}"]`);
+            if (radioTransp) radioTransp.checked = true;
+            document.getElementById('atividade-transporte-detalhe').value = atv.transporteDetalhe || '';
+            toggleTransporteDetalhes();
+
+            // Preenche Responsáveis no Local
+            initResponsaveisLocaisForm(atv.responsaveisLocais || []);
+
+            // Preenche Fotos
+            fotosTemporarias = atv.fotos ? JSON.parse(JSON.stringify(atv.fotos)) : [];
+            renderFotosPreviewForm();
+
+            calcularDuracaoPreview();
+
+            document.getElementById('form-atividade-titulo').textContent = 'Editar Atividade';
+            document.getElementById('form-atividade-icon').innerHTML = '<i class="fa-solid fa-pen"></i>';
+            document.getElementById('form-atividade-icon').className = 'w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-sm';
+            document.getElementById('btn-salvar-atividade').innerHTML = '<i class="fa-solid fa-check"></i><span>Salvar Alterações</span>';
+            document.getElementById('btn-salvar-atividade').className = 'flex-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2 text-sm';
+            document.getElementById('btn-cancelar-edicao-atividade').classList.remove('hidden');
+
+            document.getElementById('form-atividade').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function deleteAtividade(id) {
+            const atv = atividades.find(a => a.id === id);
+            if (!atv) return;
+
+            openConfirmModal(
+                'Excluir Atividade',
+                `Deseja realmente excluir a atividade "${atv.assunto}"?`,
+                () => {
+                    atividades = atividades.filter(a => a.id !== id);
+                    salvarAtividadesStorage();
+                    if (document.getElementById('atividade-id').value === id) {
+                        resetFormAtividade();
+                    }
+                    atualizarSelectsColaboradores();
+                    renderAtividades();
+                    atualizarKPIs();
+                    showToast('Atividade removida com sucesso.', 'info');
+                }
+            );
+        }
+
+        function resetFormAtividade() {
+            document.getElementById('form-atividade').reset();
+            document.getElementById('atividade-id').value = '';
+            preencherDatasPadraoFormulario();
+
+            // Reseta transporte, responsáveis no local e fotos
+            const radioCorp = document.querySelector('input[name="atividade-transporte"][value="Corporativo"]');
+            if (radioCorp) radioCorp.checked = true;
+            toggleTransporteDetalhes();
+            initResponsaveisLocaisForm();
+            fotosTemporarias = [];
+            renderFotosPreviewForm();
+
+            document.getElementById('form-atividade-titulo').textContent = 'Nova Atividade / Visita';
+            document.getElementById('form-atividade-icon').innerHTML = '<i class="fa-solid fa-plus"></i>';
+            document.getElementById('form-atividade-icon').className = 'w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center text-sm';
+            document.getElementById('btn-salvar-atividade').innerHTML = '<i class="fa-solid fa-check"></i><span>Registrar Atividade</span>';
+            document.getElementById('btn-salvar-atividade').className = 'flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2 text-sm';
+            document.getElementById('btn-cancelar-edicao-atividade').classList.add('hidden');
+        }
+
+        // =========================================================================
+        // FILTRAGEM E RENDERIZAÇÃO DA LISTA DE ATIVIDADES
+        // =========================================================================
+        function getAtividadesFiltradas() {
+            const texto = document.getElementById('filtro-texto').value.toLowerCase().trim();
+            const resp = document.getElementById('filtro-responsavel').value;
+            const unidade = document.getElementById('filtro-unidade').value.toLowerCase().trim();
+            const transporte = document.getElementById('filtro-transporte').value;
+            const data = document.getElementById('filtro-data').value;
+
+            return atividades.filter(a => {
+                const matchRespLocal = (a.responsaveisLocais || []).some(rl =>
+                    (rl.nome && rl.nome.toLowerCase().includes(texto)) ||
+                    (rl.cargo && rl.cargo.toLowerCase().includes(texto))
+                );
+
+                const matchTexto = !texto ||
+                    a.assunto.toLowerCase().includes(texto) ||
+                    a.descricao.toLowerCase().includes(texto) ||
+                    a.cargo.toLowerCase().includes(texto) ||
+                    (a.transporteDetalhe && a.transporteDetalhe.toLowerCase().includes(texto)) ||
+                    matchRespLocal;
+
+                const matchResp = !resp || a.responsavelNome === resp;
+                const matchUnidade = !unidade || a.unidade.toLowerCase().includes(unidade);
+                const matchTransporte = !transporte || (a.transporteTipo || 'Corporativo') === transporte;
+                const matchData = !data || a.inicio.startsWith(data) || a.fim.startsWith(data);
+
+                return matchTexto && matchResp && matchUnidade && matchTransporte && matchData;
+            }).sort((a, b) => new Date(b.inicio) - new Date(a.inicio));
+        }
+
+        function limparFiltros() {
+            document.getElementById('filtro-texto').value = '';
+            document.getElementById('filtro-responsavel').value = '';
+            document.getElementById('filtro-unidade').value = '';
+            document.getElementById('filtro-transporte').value = '';
+            document.getElementById('filtro-data').value = '';
+            renderAtividades();
+        }
+
+        function renderAtividades() {
+            const container = document.getElementById('lista-atividades-container');
+            const filtradas = getAtividadesFiltradas();
+            document.getElementById('count-filtrados-label').textContent = filtradas.length;
+
+            if (filtradas.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center shadow-sm">
+                        <div class="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                            <i class="fa-regular fa-folder-open text-2xl"></i>
+                        </div>
+                        <h4 class="font-bold text-slate-800 text-base">Nenhuma atividade encontrada</h4>
+                        <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Não há registros correspondentes aos filtros atuais ou nenhuma atividade foi lançada ainda.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filtradas.map(atv => {
+                const statusBadge = getStatusBadgeHTML(atv.status);
+                const dataInicioFmt = formatDateTimeBR(atv.inicio);
+                const dataFimFmt = formatDateTimeBR(atv.fim);
+                const duracaoFmt = formatarMinutosParaTexto(atv.duracaoMinutos);
+
+                // Badge de Transporte
+                const tipoTransp = atv.transporteTipo || 'Corporativo';
+                const transpBadge = tipoTransp === 'Corporativo'
+                    ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100" title="${escapeHTML(atv.transporteDetalhe || 'Transporte Corporativo')}">
+                         <i class="fa-solid fa-building-shield text-[10px]"></i> Transp. Corporativo
+                       </span>`
+                    : `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200/70" title="${escapeHTML(atv.transporteDetalhe || 'Transporte Próprio')}">
+                         <i class="fa-solid fa-car text-[10px]"></i> Transp. Próprio
+                       </span>`;
+
+                // Bloco de Responsáveis no Local
+                const respLocais = atv.responsaveisLocais || [];
+                const respLocaisHTML = respLocais.length > 0 ? `
+                    <div class="bg-indigo-50/40 border border-indigo-100/80 rounded-xl p-3 mb-3">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-indigo-800 mb-1.5 flex items-center gap-1.5">
+                            <i class="fa-solid fa-handshake"></i> Responsável(is) no Local da Visita
+                        </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            ${respLocais.map(rl => `
+                                <div class="text-xs bg-white px-2.5 py-1.5 rounded-lg border border-indigo-100/60 flex flex-col">
+                                    <span class="font-bold text-slate-800">${escapeHTML(rl.nome)}</span>
+                                    <span class="text-[11px] text-slate-500">
+                                        ${rl.cargo ? escapeHTML(rl.cargo) : ''}
+                                        ${rl.cargo && rl.telefone ? ' • ' : ''}
+                                        ${rl.telefone ? `<i class="fa-solid fa-phone text-[9px] text-slate-400"></i> ${escapeHTML(rl.telefone)}` : ''}
+                                    </span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : '';
+
+                // Galeria de Fotos da Visita
+                const fotos = atv.fotos || [];
+                const fotosHTML = fotos.length > 0 ? `
+                    <div class="mb-4">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
+                            <i class="fa-solid fa-camera text-brand-600"></i> Registros Fotográficos (${fotos.length})
+                        </p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                            ${fotos.map((f, fIdx) => `
+                                <div onclick="openLightbox('${f.dataUrl}', '${escapeHTML(f.legenda || `${atv.assunto} - Foto ${fIdx + 1}`)}')" class="group/foto relative aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-100 cursor-zoom-in shadow-xs">
+                                    <img src="${f.dataUrl}" alt="${escapeHTML(f.legenda || 'Foto da visita')}" class="w-full h-full object-cover group-hover/foto:scale-105 transition duration-300">
+                                    <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent flex items-end p-2">
+                                        <span class="text-[10px] text-white font-medium truncate w-full">${escapeHTML(f.legenda || `Foto #${fIdx + 1}`)}</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : '';
+
+                return `
+                    <article class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-brand-300 transition group">
+                        <!-- Cabeçalho do Card -->
+                        <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+                            <div class="space-y-1">
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    ${statusBadge}
+                                    ${transpBadge}
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                                        <i class="fa-solid fa-building text-slate-400 text-[10px]"></i>
+                                        ${escapeHTML(atv.unidade)}
+                                    </span>
+                                </div>
+                                <h4 class="font-bold text-slate-900 text-base leading-snug pt-1">${escapeHTML(atv.assunto)}</h4>
+                            </div>
+
+                            <!-- Duração Badge -->
+                            <div class="bg-brand-50 border border-brand-100 text-brand-800 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0">
+                                <i class="fa-regular fa-clock"></i>
+                                <span>${duracaoFmt}</span>
+                            </div>
+                        </div>
+
+                        <!-- Metadados: Responsável, Cargo, Transporte Detalhe e Horário -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600 bg-slate-50 rounded-xl p-3 mb-3 border border-slate-100">
+                            <div class="flex items-start gap-2">
+                                <i class="fa-solid fa-user-tie text-brand-600 w-4 text-center mt-0.5"></i>
+                                <div>
+                                    <span class="font-bold text-slate-800">${escapeHTML(atv.responsavelNome)}</span>
+                                    <span class="block text-[11px] text-slate-500">${escapeHTML(atv.cargo)}</span>
+                                    ${atv.transporteDetalhe ? `<span class="block text-[11px] text-slate-600 mt-0.5"><i class="fa-solid fa-route text-slate-400 mr-1"></i>${escapeHTML(atv.transporteDetalhe)}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-2">
+                                <i class="fa-regular fa-calendar-check text-brand-600 w-4 text-center mt-0.5"></i>
+                                <div>
+                                    <span class="block"><strong class="text-slate-700">Início:</strong> ${dataInicioFmt}</span>
+                                    <span class="block"><strong class="text-slate-700">Término:</strong> ${dataFimFmt}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Responsáveis no Local -->
+                        ${respLocaisHTML}
+
+                        <!-- Descrição -->
+                        <p class="text-sm text-slate-700 whitespace-pre-line leading-relaxed mb-4">${escapeHTML(atv.descricao)}</p>
+
+                        <!-- Galeria de Fotos -->
+                        ${fotosHTML}
+
+                        <!-- Barra de Ações Individuais -->
+                        <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                            <!-- Compartilhamento Individual -->
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[11px] font-semibold text-slate-400 mr-1">Enviar:</span>
+                                <button type="button" onclick="shareWhatsAppIndividual('${atv.id}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white text-xs font-semibold transition flex items-center gap-1" title="Encaminhar via WhatsApp">
+                                    <i class="fa-brands fa-whatsapp"></i> WhatsApp
+                                </button>
+                                <button type="button" onclick="shareEmailIndividual('${atv.id}')" class="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-brand-600 text-brand-700 hover:text-white text-xs font-semibold transition flex items-center gap-1" title="Encaminhar via E-mail">
+                                    <i class="fa-regular fa-envelope"></i> E-mail
+                                </button>
+                            </div>
+
+                            <!-- Editar e Excluir -->
+                            <div class="flex items-center gap-2">
+                                <button type="button" onclick="editAtividade('${atv.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-brand-300 hover:bg-brand-50 text-slate-600 hover:text-brand-700 text-xs font-semibold transition flex items-center gap-1">
+                                    <i class="fa-solid fa-pen-to-square"></i> Editar
+                                </button>
+                                <button type="button" onclick="deleteAtividade('${atv.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-red-300 hover:bg-red-50 text-slate-600 hover:text-red-600 text-xs font-semibold transition flex items-center gap-1">
+                                    <i class="fa-solid fa-trash-can"></i> Excluir
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        function getStatusBadgeHTML(status) {
+            switch (status) {
+                case 'Em Andamento':
+                    return '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800"><i class="fa-solid fa-spinner text-[10px]"></i> Em Andamento</span>';
+                case 'Pendente':
+                    return '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800"><i class="fa-regular fa-clock text-[10px]"></i> Pendente</span>';
+                default:
+                    return '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800"><i class="fa-solid fa-circle-check text-[10px]"></i> Concluída</span>';
+            }
+        }
+
+        function atualizarKPIs() {
+            document.getElementById('kpi-total-atividades').textContent = atividades.length;
+            
+            const totalMinutos = atividades.reduce((acc, item) => acc + (item.duracaoMinutos || 0), 0);
+            document.getElementById('kpi-total-horas').textContent = formatarMinutosParaTexto(totalMinutos);
+
+            const unidadesUnicas = new Set(atividades.map(a => a.unidade.trim().toLowerCase()).filter(Boolean));
+            document.getElementById('kpi-total-unidades').textContent = unidadesUnicas.size;
+            
+            const totalFotos = atividades.reduce((acc, item) => acc + ((item.fotos && item.fotos.length) || 0), 0);
+            document.getElementById('kpi-total-fotos').textContent = totalFotos;
+        }
+
+        // =========================================================================
+        // GERAÇÃO DE RELATÓRIO EM PDF E IMPRESSÃO (COM FOTOS, TRANSPORTE E CONTATOS LOCAIS)
+        // =========================================================================
+        function gerarHTMLRelatorio() {
+            const lista = getAtividadesFiltradas();
+            const dataEmissao = new Date().toLocaleString('pt-BR');
+            const totalMinutos = lista.reduce((acc, item) => acc + (item.duracaoMinutos || 0), 0);
+
+            const fResp = document.getElementById('filtro-responsavel').value || 'Todos';
+            const fUnidade = document.getElementById('filtro-unidade').value.trim() || 'Todas';
+            const fTransp = document.getElementById('filtro-transporte').value || 'Todos';
+            const fData = document.getElementById('filtro-data').value ? formatDateBR(document.getElementById('filtro-data').value) : 'Todo o período';
+
+            const blocosAtividades = lista.map((atv, idx) => {
+                const respLocais = atv.responsaveisLocais || [];
+                const fotos = atv.fotos || [];
+                const tipoTransp = atv.transporteTipo || 'Corporativo';
+
+                const respLocaisPDF = respLocais.length > 0 ? `
+                    <div class="mt-2.5 pt-2 border-t border-slate-200">
+                        <span class="text-[10px] font-bold uppercase text-slate-500 block mb-1">Responsável(is) no Local da Visita:</span>
+                        <div class="flex flex-wrap gap-2">
+                            ${respLocais.map(rl => `
+                                <span class="text-[11px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-800">
+                                    <strong>${escapeHTML(rl.nome)}</strong>${rl.cargo ? ` (${escapeHTML(rl.cargo)})` : ''}${rl.telefone ? ` — Tel: ${escapeHTML(rl.telefone)}` : ''}
+                                </span>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : '';
+
+                const fotosPDF = fotos.length > 0 ? `
+                    <div class="mt-3 pt-2 border-t border-slate-200">
+                        <span class="text-[10px] font-bold uppercase text-slate-500 block mb-1.5">Evidências Fotográficas (${fotos.length}):</span>
+                        <div class="grid grid-cols-3 gap-2.5">
+                            ${fotos.map((f, fIdx) => `
+                                <div class="border border-slate-300 rounded p-1.5 bg-white text-center">
+                                    <img src="${f.dataUrl}" class="w-full h-32 object-cover rounded mb-1">
+                                    <p class="text-[10px] text-slate-700 font-medium leading-tight">${escapeHTML(f.legenda || `Registro Fotográfico #${fIdx + 1}`)}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : '';
+
+                return `
+                    <div class="page-break-inside-avoid border border-slate-300 rounded-lg mb-4 overflow-hidden">
+                        <!-- Barra Superior da Ficha -->
+                        <div class="bg-slate-800 text-white px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div class="font-bold">
+                                <span class="bg-white text-slate-900 px-1.5 py-0.5 rounded mr-1.5">#${idx + 1}</span>
+                                ${escapeHTML(atv.assunto)}
+                            </div>
+                            <div class="flex items-center gap-2 text-[11px]">
+                                <span class="bg-slate-700 px-2 py-0.5 rounded">Status: <strong>${escapeHTML(atv.status || 'Concluída')}</strong></span>
+                                <span class="bg-brand-700 px-2 py-0.5 rounded">Duração: <strong>${formatarMinutosParaTexto(atv.duracaoMinutos)}</strong></span>
+                            </div>
+                        </div>
+
+                        <!-- Corpo da Ficha -->
+                        <div class="p-3.5 text-xs space-y-2 bg-white">
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded border border-slate-200">
+                                <div>
+                                    <span class="text-[10px] uppercase text-slate-500 block">Responsável Técnico</span>
+                                    <strong class="text-slate-900 block">${escapeHTML(atv.responsavelNome)}</strong>
+                                    <span class="text-[11px] text-slate-600">${escapeHTML(atv.cargo)}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] uppercase text-slate-500 block">Unidade / Local</span>
+                                    <strong class="text-slate-900">${escapeHTML(atv.unidade)}</strong>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] uppercase text-slate-500 block">Período da Atividade</span>
+                                    <span class="block"><strong>Início:</strong> ${formatDateTimeBR(atv.inicio)}</span>
+                                    <span class="block"><strong>Fim:</strong> ${formatDateTimeBR(atv.fim)}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] uppercase text-slate-500 block">Deslocamento / Transporte</span>
+                                    <strong class="text-slate-900 block">Transporte ${escapeHTML(tipoTransp)}</strong>
+                                    ${atv.transporteDetalhe ? `<span class="text-[11px] text-slate-600">${escapeHTML(atv.transporteDetalhe)}</span>` : ''}
+                                </div>
+                            </div>
+
+                            <!-- Descrição -->
+                            <div>
+                                <span class="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">Descrição das Atividades Realizadas:</span>
+                                <p class="text-slate-800 whitespace-pre-line leading-relaxed">${escapeHTML(atv.descricao)}</p>
+                            </div>
+
+                            ${respLocaisPDF}
+                            ${fotosPDF}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div id="documento-relatorio-oficial" class="font-sans text-slate-900 bg-white">
+                    <!-- Cabeçalho Institucional -->
+                    <div class="border-b-2 border-slate-800 pb-4 mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-widest text-brand-700">Registro Técnico & Visita Operacional</p>
+                            <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">RELATÓRIO DE ATIVIDADES</h1>
+                            <p class="text-xs text-slate-500 mt-0.5">Emitido em: ${dataEmissao}</p>
+                        </div>
+                        <div class="text-left sm:text-right text-xs bg-slate-100 p-3 rounded-lg border border-slate-200">
+                            <div><strong>Total de Atividades:</strong> ${lista.length}</div>
+                            <div><strong>Carga Horária Total:</strong> ${formatarMinutosParaTexto(totalMinutos)}</div>
+                        </div>
+                    </div>
+
+                    <!-- Metadados / Filtros Aplicados -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200 mb-5">
+                        <div><span class="text-slate-500 block text-[10px] uppercase">Responsável</span> <strong class="text-slate-800">${escapeHTML(fResp)}</strong></div>
+                        <div><span class="text-slate-500 block text-[10px] uppercase">Unidade/Setor</span> <strong class="text-slate-800">${escapeHTML(fUnidade)}</strong></div>
+                        <div><span class="text-slate-500 block text-[10px] uppercase">Transporte</span> <strong class="text-slate-800">${escapeHTML(fTransp)}</strong></div>
+                        <div><span class="text-slate-500 block text-[10px] uppercase">Período</span> <strong class="text-slate-800">${escapeHTML(fData)}</strong></div>
+                    </div>
+
+                    <!-- Fichas Detalhadas das Atividades -->
+                    <div class="mb-8">
+                        ${blocosAtividades}
+                    </div>
+
+                    <!-- Campos de Assinatura -->
+                    <div class="page-break-inside-avoid mt-10 pt-6 grid grid-cols-1 sm:grid-cols-3 gap-8 text-center text-xs">
+                        <div>
+                            <div class="border-t border-slate-800 w-11/12 mx-auto pt-2 font-bold text-slate-800">
+                                Responsável Técnico
+                            </div>
+                            <p class="text-slate-500 mt-0.5">${fResp !== 'Todos' ? escapeHTML(fResp) : 'Executor da Atividade'}</p>
+                        </div>
+                        <div>
+                            <div class="border-t border-slate-800 w-11/12 mx-auto pt-2 font-bold text-slate-800">
+                                Responsável no Local
+                            </div>
+                            <p class="text-slate-500 mt-0.5">Recepção / Acompanhamento</p>
+                        </div>
+                        <div>
+                            <div class="border-t border-slate-800 w-11/12 mx-auto pt-2 font-bold text-slate-800">
+                                Chefia / Coordenação
+                            </div>
+                            <p class="text-slate-500 mt-0.5">Visto e Aprovação</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function openPreviewModal() {
+            const lista = getAtividadesFiltradas();
+            if (lista.length === 0) {
+                showToast('Não há atividades filtradas para gerar o relatório.', 'error');
+                return;
+            }
+
+            const html = gerarHTMLRelatorio();
+            document.getElementById('modal-report-container').innerHTML = html;
+            document.getElementById('print-area').innerHTML = html;
+
+            const modal = document.getElementById('preview-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closePreviewModal() {
+            const modal = document.getElementById('preview-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function downloadPDF() {
+            const lista = getAtividadesFiltradas();
+            if (lista.length === 0) {
+                showToast('Não há atividades filtradas para baixar o PDF.', 'error');
+                return;
+            }
+
+            showToast('Gerando arquivo PDF, aguarde...', 'info');
+
+            const wrapper = document.createElement('div');
+            wrapper.style.padding = '15px';
+            wrapper.style.background = '#ffffff';
+            wrapper.innerHTML = gerarHTMLRelatorio();
+
+            document.getElementById('print-area').innerHTML = wrapper.innerHTML;
+
+            const hojeISO = new Date().toISOString().slice(0, 10);
+            const filename = `Relatorio_Atividades_${hojeISO}.pdf`;
+
+            const opt = {
+                margin:       [10, 10, 12, 10],
+                filename:     filename,
+                image:        { type: 'jpeg', quality: 0.95 },
+                html2canvas:  { scale: 2, useCORS: true, logging: false },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            html2pdf().set(opt).from(wrapper).save().then(() => {
+                showToast(`PDF "${filename}" baixado com sucesso!`, 'success');
+            }).catch(err => {
+                console.error('Erro ao gerar PDF:', err);
+                showToast('Erro ao gerar PDF. Tente usar a opção Imprimir.', 'error');
+            });
+        }
+
+        window.addEventListener('beforeprint', () => {
+            const lista = getAtividadesFiltradas();
+            if (lista.length > 0) {
+                document.getElementById('print-area').innerHTML = gerarHTMLRelatorio();
+            }
+        });
+
+        // =========================================================================
+        // COMPARTILHAMENTO VIA WHATSAPP, E-MAIL E ÁREA DE TRANSFERÊNCIA
+        // =========================================================================
+        function formatarTextoAtividadeIndividual(atv) {
+            const tipoTransp = atv.transporteTipo || 'Corporativo';
+            const transpStr = atv.transporteDetalhe ? `${tipoTransp} (${atv.transporteDetalhe})` : tipoTransp;
+            
+            const respLocais = atv.responsaveisLocais || [];
+            const respLocaisStr = respLocais.length > 0
+                ? respLocais.map(r => `${r.nome}${r.cargo ? ' - ' + r.cargo : ''}${r.telefone ? ' (' + r.telefone + ')' : ''}`).join('; ')
+                : 'Não informado';
+
+            const qtdFotos = (atv.fotos || []).length;
+
+            return `*RELATÓRIO DE ATIVIDADE / VISITA*\n` +
+                   `━━━━━━━━━━━━━━━━━━━━\n` +
+                   `*Assunto:* ${atv.assunto}\n` +
+                   `*Status:* ${atv.status || 'Concluída'}\n` +
+                   `*Responsável:* ${atv.responsavelNome} (${atv.cargo})\n` +
+                   `*Unidade:* ${atv.unidade}\n` +
+                   `*Resp. no Local:* ${respLocaisStr}\n` +
+                   `*Transporte:* ${transpStr}\n` +
+                   `*Início:* ${formatDateTimeBR(atv.inicio)}\n` +
+                   `*Término:* ${formatDateTimeBR(atv.fim)}\n` +
+                   `*Duração:* ${formatarMinutosParaTexto(atv.duracaoMinutos)}\n` +
+                   `*Registros Fotográficos:* ${qtdFotos} foto(s) anexada(s) no PDF\n\n` +
+                   `*Descrição Detalhada:*\n${atv.descricao}`;
+        }
+
+        function formatarTextoRelatorioConsolidado() {
+            const lista = getAtividadesFiltradas();
+            if (lista.length === 0) return null;
+
+            const totalMinutos = lista.reduce((acc, item) => acc + (item.duracaoMinutos || 0), 0);
+            const dataEmissao = new Date().toLocaleDateString('pt-BR');
+
+            let texto = `*RELATÓRIO CONSOLIDADO DE ATIVIDADES*\n`;
+            texto += `_Emitido em: ${dataEmissao}_\n`;
+            texto += `*Total de Registros:* ${lista.length} | *Carga Horária:* ${formatarMinutosParaTexto(totalMinutos)}\n`;
+            texto += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+            lista.forEach((atv, idx) => {
+                const tipoTransp = atv.transporteTipo || 'Corporativo';
+                const respLocais = atv.responsaveisLocais || [];
+                const respLocaisStr = respLocais.length > 0
+                    ? respLocais.map(r => `${r.nome}${r.cargo ? ' (' + r.cargo + ')' : ''}`).join(', ')
+                    : 'Não informado';
+                const qtdFotos = (atv.fotos || []).length;
+
+                texto += `*${idx + 1}. ${atv.assunto}* (${atv.status || 'Concluída'})\n`;
+                texto += `• *Responsável:* ${atv.responsavelNome} (${atv.cargo})\n`;
+                texto += `• *Unidade:* ${atv.unidade}\n`;
+                texto += `• *Resp. no Local:* ${respLocaisStr}\n`;
+                texto += `• *Transporte:* ${tipoTransp}${atv.transporteDetalhe ? ' - ' + atv.transporteDetalhe : ''}\n`;
+                texto += `• *Período:* ${formatDateTimeBR(atv.inicio)} até ${formatDateTimeBR(atv.fim)} (${formatarMinutosParaTexto(atv.duracaoMinutos)})\n`;
+                if (qtdFotos > 0) {
+                    texto += `• *Fotos:* ${qtdFotos} evidência(s) fotográfica(s) no relatório PDF\n`;
+                }
+                texto += `• *Descrição:* ${atv.descricao}\n\n`;
+            });
+
+            return texto.trim();
+        }
+
+        function shareWhatsAppIndividual(id) {
+            const atv = atividades.find(a => a.id === id);
+            if (!atv) return;
+            const texto = formatarTextoAtividadeIndividual(atv);
+            const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+
+        function shareEmailIndividual(id) {
+            const atv = atividades.find(a => a.id === id);
+            if (!atv) return;
+            const corpo = formatarTextoAtividadeIndividual(atv).replace(/\*/g, '');
+            const assunto = `Relatório de Atividade: ${atv.assunto} - ${atv.unidade}`;
+            const mailtoUrl = `mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+            window.location.href = mailtoUrl;
+        }
+
+        function shareWhatsAppConsolidado() {
+            const texto = formatarTextoRelatorioConsolidado();
+            if (!texto) {
+                showToast('Nenhuma atividade filtrada para compartilhar.', 'error');
+                return;
+            }
+            const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+
+        function shareEmailConsolidado() {
+            const texto = formatarTextoRelatorioConsolidado();
+            if (!texto) {
+                showToast('Nenhuma atividade filtrada para enviar por e-mail.', 'error');
+                return;
+            }
+            const corpoLimpo = texto.replace(/\*/g, '').replace(/_/g, '');
+            const dataHoje = new Date().toLocaleDateString('pt-BR');
+            const assunto = `Relatório Consolidado de Atividades - ${dataHoje}`;
+            const mailtoUrl = `mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpoLimpo)}`;
+            window.location.href = mailtoUrl;
+        }
+
+        function copyReportTextConsolidado() {
+            const texto = formatarTextoRelatorioConsolidado();
+            if (!texto) {
+                showToast('Nenhuma atividade filtrada para copiar.', 'error');
+                return;
+            }
+
+            const textarea = document.createElement('textarea');
+            textarea.value = texto;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showToast('Texto do relatório copiado para a área de transferência!', 'success');
+            } catch (err) {
+                showToast('Não foi possível copiar o texto.', 'error');
+            } finally {
+                document.body.removeChild(textarea);
+            }
+        }
+
+        // =========================================================================
+        // UTILITÁRIOS DE FORMATAÇÃO, SEGURANÇA E UI (TOAST / MODAL)
+        // =========================================================================
+        function formatDateTimeBR(isoLocalStr) {
+            if (!isoLocalStr) return '';
+            const [datePart, timePart] = isoLocalStr.split('T');
+            if (!datePart || !timePart) return isoLocalStr;
+            const [yyyy, mm, dd] = datePart.split('-');
+            return `${dd}/${mm}/${yyyy} às ${timePart}`;
+        }
+
+        function formatDateBR(dateStr) {
+            if (!dateStr) return '';
+            const [yyyy, mm, dd] = dateStr.split('-');
+            return `${dd}/${mm}/${yyyy}`;
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const styles = {
+                success: 'bg-emerald-600 text-white border-emerald-700',
+                error: 'bg-red-600 text-white border-red-700',
+                info: 'bg-slate-800 text-white border-slate-900'
+            };
+
+            const icons = {
+                success: 'fa-circle-check',
+                error: 'fa-circle-exclamation',
+                info: 'fa-circle-info'
+            };
+
+            toast.className = `toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium ${styles[type] || styles.info}`;
+            toast.innerHTML = `
+                <i class="fa-solid ${icons[type] || icons.info} text-base shrink-0"></i>
+                <span class="flex-1">${escapeHTML(message)}</span>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function openConfirmModal(title, message, onConfirm) {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-message').textContent = message;
+            confirmCallback = onConfirm;
+
+            const modal = document.getElementById('confirm-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeConfirmModal() {
+            const modal = document.getElementById('confirm-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            confirmCallback = null;
+        }
+
+        document.getElementById('confirm-cancel-btn').addEventListener('click', closeConfirmModal);
+        document.getElementById('confirm-ok-btn').addEventListener('click', () => {
+            if (typeof confirmCallback === 'function') {
+                confirmCallback();
+            }
+            closeConfirmModal();
+        });
+    </script>
+</body>
+</html>
